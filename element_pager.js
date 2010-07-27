@@ -25,7 +25,7 @@
  * @license MIT License (http://www.opensource.org/licenses/mit-license.php)
  */
 var ElementPager = new Class({
-	Implements: [Options],
+	Implements: [Options, Events],
 	
 	/**
 	 * Elements to be paginated
@@ -65,6 +65,11 @@ var ElementPager = new Class({
 		links: {
 			currentClass: 'current',
 			disabledClass: 'disabled'
+		},
+		events: {
+			init: $empty,
+			beforeChange: $empty,
+			afterChange: $empty
 		}
 	},
 	
@@ -76,6 +81,7 @@ var ElementPager = new Class({
 		this.setOptions(options);
 		if( !this.elements.length || this.elements.length <= this.options.itemsPerPage ) return;
 		this.toolbar();
+		this.fireEvent('init', this);
 		this.showPage(0);
 	},
 	
@@ -97,10 +103,12 @@ var ElementPager = new Class({
 		// Create the first/last links
 		if(this.options.toolbar.showFirstLast){
 			var first = defaultLink.clone().addClass('first').set('text', '<<').addEvent('click', function(e){
+				e.preventDefault();
 				this.showPage( 0 );
 			}.bind(this)).inject( toolbar );
 			this.metalinks.set('first', first);
 			var last = defaultLink.clone().addClass('last').set('text', '>>').addEvent('click', function(e){
+				e.preventDefault();
 				this.showPage( this.pageCount-1 );
 			}.bind(this)).inject( toolbar );
 			this.metalinks.set('last', last);
@@ -109,10 +117,12 @@ var ElementPager = new Class({
 		// Create the next/previous links
 		if(this.options.toolbar.showNextPrevious){
 			var prev = defaultLink.clone().addClass('prev').set('text', '<').addEvent('click', function(e){
+				e.preventDefault();
 				this.showPage( this.currentPage-1 );
 			}.bind(this)).inject( toolbar );
 			this.metalinks.set('prev', prev);
 			var next = defaultLink.clone().addClass('next').set('text', '>').addEvent('click', function(e){
+				e.preventDefault();
 				this.showPage( this.currentPage+1 );
 			}.bind(this)).inject( toolbar );
 			this.metalinks.set('next', next);
@@ -121,11 +131,17 @@ var ElementPager = new Class({
 		// Create the links
 		linkCount.times(function( index ){
 			var currentLink = defaultLink.clone().set('text', index+1).addEvent('click', function(e){
+				e.preventDefault();
 				this.showPage( index );
 			}.bind(this)).inject( linkCtnr );
 			this.links.push( currentLink );
 		}.bind(this));
 		linkCtnr.inject(toolbar);
+		
+		// Add events
+		this.addEvent('init', this.options.events.init);
+		this.addEvent('beforeChange', this.options.events.beforeChange);
+		this.addEvent('afterChange', this.options.events.afterChange);
 		
 		// Inject the toolbar at the right place
 		var toolBarLocationType = $type(this.options.toolbar.location).toLowerCase();
@@ -148,19 +164,36 @@ var ElementPager = new Class({
 	},
 	
 	/**
-	 * Shows a page
+	 * Get a set of elements that are attached to a specific page number
+	 * @param int pageNumber The number of the page. Defaults to 0
 	 */
-	showPage: function( number ){
-		number = $type(number) ? number.limit( 0, this.pageCount-1 ) : 0;
+	getPageElements: function( pageNumber ){
+		var pageNumber = this.limitPageNumber( pageNumber );
 		
 		// Compute first and last elements to show
-		var firstElementIndex = number * this.options.itemsPerPage;
-		var lastElementIndex = firstElementIndex + this.options.itemsPerPage - 1;
+		var firstElementIndex = pageNumber * this.options.itemsPerPage;
+		var lastElementIndex = firstElementIndex + this.options.itemsPerPage-1;
 		
 		// Filter elements to show
-		var elementsToShow = this.elements.filter(function(element, index){
-		    return index >= firstElementIndex && index <= lastElementIndex;
-		});
+		var elementsToReturn = this.elements.filter(function(element, index){
+			return index >= firstElementIndex && index <= lastElementIndex;
+		});	
+		
+		return elementsToReturn;
+	},
+	
+	/**
+	 * Shows a page
+	 * @param int number The number of the page. Defaults to 0
+	 */
+	showPage: function( pageNumber ){
+		var pageNumber = this.limitPageNumber( pageNumber );
+		
+		// beforeChange Event
+		this.fireEvent('beforeChange', [this, pageNumber]);
+		
+		// Get elements to be displayed
+		var elementsToShow = this.getPageElements( pageNumber );
 		
 		// Show page
 		this.elements.addClass(this.options.hideClass);
@@ -171,22 +204,29 @@ var ElementPager = new Class({
 		this.links.each(function(link){
 			link.removeClass(currentClass);
 		});
-		this.links[number].addClass(currentClass);
+		this.links[pageNumber].addClass(currentClass);
 		
 		// If page is first or last disable links
 		this.metalinks.each(function(value, key){
 			this.metalinks.get(key).removeClass( this.options.links.disabledClass );
 		}.bind(this));
-		if(number == 0){
+		if(pageNumber == 0){
 			if( this.metalinks.has('first') ) this.metalinks.get('first').addClass( this.options.links.disabledClass );
 			if( this.metalinks.has('prev') ) this.metalinks.get('prev').addClass( this.options.links.disabledClass );
 		}
-		if(number == this.pageCount-1){
+		if(pageNumber == this.pageCount-1){
 			if( this.metalinks.has('last') ) this.metalinks.get('last').addClass( this.options.links.disabledClass );
 			if( this.metalinks.has('next') ) this.metalinks.get('next').addClass( this.options.links.disabledClass );
 		}
 		
 		// Save the current page
-		this.currentPage = number;
+		this.currentPage = pageNumber;
+		
+		// afterChange Event
+		this.fireEvent('afterChange', [this, pageNumber]);
+	},
+	
+	limitPageNumber: function( pageNumber ){
+		return $type(pageNumber) == 'number'  ? pageNumber.limit( 0, this.pageCount-1 ) : 0;
 	}
 });
